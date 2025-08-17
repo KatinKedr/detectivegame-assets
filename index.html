@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Detective Game (Hotspots + Popups + Report)</title>
+  <style>
+    html, body { margin:0; padding:0; width:100vw; height:100vh; background:#222; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    #frame { box-sizing:border-box; width:100%; height:100%; padding:20px; display:flex; align-items:center; justify-content:center; background:#222; }
+    #game-container { position:relative; width:100%; height:auto; max-width:calc(100vw - 40px); max-height:calc(100vh - 40px); aspect-ratio:16/9; background:url('https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/room.png?v=1749203840899') no-repeat center/100% 100%; }
+    .hotspot { position:absolute; background:transparent; cursor:pointer; }
+    .hotspot:hover { outline:none; }
+    #tooltip { position:absolute; background:rgba(0,0,0,0.75); color:#fff; padding:4px 8px; border-radius:4px; font-size:0.9rem; visibility:hidden; pointer-events:none; z-index:50; }
+    #popup { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:600px; height:400px; background:#1a2433; border:4px solid #fff; border-radius:16px; padding:20px; display:none; color:#fff; z-index:100; }
+    #popup-close { position:absolute; top:12px; right:12px; width:40px; height:40px; background:#fff; border:none; border-radius:50%; font-size:28px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    #popup-content { position:absolute; top:60px; left:20px; right:20px; bottom:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:auto; gap:10px; }
+    #popup-content img { max-width:80%; max-height:60%; border-radius:8px; }
+    .report-text { width:80%; font-size:1.2rem; line-height:1.4; text-align:center; margin:0 auto; }
+    .items-row { display:flex; justify-content:space-around; align-items:center; flex-wrap:wrap; gap:20px; margin-top:10px; width:100%; }
+    .items-row>div { display:flex; flex-direction:column; align-items:center; }
+    .items-row img { max-width:160px; max-height:160px; border-radius:8px; }
+    .words-row { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-top:10px; width:100%; }
+    .popup-word { display:inline-block; margin:6px; padding:6px 12px; background:#3b5570; color:#fff; border-radius:12px; cursor:pointer; }
+    #clues-icon { position:absolute; top:16px; right:16px; width:48px; height:48px; cursor:pointer; z-index:80; }
+    #collection-dropdown { position:absolute; top:72px; right:16px; width:200px; max-height:60vh; background:rgba(0,0,0,0.8); border:2px solid #fff; border-radius:8px; padding:8px; display:none; color:#fff; overflow-y:auto; z-index:80; }
+    #collection-dropdown h2 { margin:0 0 8px; text-align:center; }
+    #collection-dropdown ul { list-style:none; padding:0; margin:0; }
+    #collection-dropdown li { margin:4px 0; font-size:0.9rem; }
+    .plus-one { position:absolute; color:#ff0; font-size:1.5rem; font-weight:bold; animation:moveUpFade 1s forwards; pointer-events:none; z-index:90; }
+    @keyframes moveUpFade { 0% { opacity:1; transform:translate(-50%,0); } 100% { opacity:0; transform:translate(-50%,-40px); } }
+    #report-icon { position:absolute; bottom:16px; right:16px; width:48px; height:48px; cursor:pointer; z-index:80; }
+  </style>
+</head>
+<body>
+  <div id="frame">
+    <div id="game-container">
+      <div class="hotspot" data-name="backpack" style="top:55.28%; left:2.55%; width:11.67%; height:29.63%;"></div>
+      <div class="hotspot" data-name="footprints" style="top:32.13%; left:9.38%; width:18.23%; height:10.46%;"></div>
+      <div class="hotspot" data-name="key card" style="top:73.61%; left:15.26%; width:6.46%; height:10.56%;"></div>
+      <div class="hotspot" data-name="laptop" style="top:30.65%; left:47.34%; width:12.81%; height:15.28%;"></div>
+      <div class="hotspot" data-name="note" style="top:7.59%; left:48.47%; width:8.39%; height:16.39%;"></div>
+      <div class="hotspot" data-name="phone" style="top:64.54%; left:68.33%; width:7.14%; height:10.56%;"></div>
+      <div class="hotspot" data-name="poster" style="top:5.56%; left:61.87%; width:11.46%; height:22.96%;"></div>
+      <div class="hotspot" data-name="report card" style="top:37.41%; left:61.72%; width:6.56%; height:9.44%;"></div>
+      <div class="hotspot" data-name="snack wrapper" style="top:87.13%; left:9.38%; width:5.42%; height:7.69%;"></div>
+
+      <div id="tooltip"></div>
+
+      <div id="popup">
+        <button id="popup-close">×</button>
+        <div id="popup-content"></div>
+      </div>
+
+      <img id="clues-icon" src="https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/clues.png?v=1749286581865" alt="Clues">
+      <div id="collection-dropdown">
+        <h2>Found Clues</h2><ul id="clue-list"></ul>
+      </div>
+
+      <img id="report-icon" src="https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/report.png?v=1749399540863" alt="Report">
+    </div>
+  </div>
+
+  <script>
+    const gameContainer = document.getElementById('game-container');
+    const tooltip = document.getElementById('tooltip');
+    const cluesIcon = document.getElementById('clues-icon');
+    const collectionDD = document.getElementById('collection-dropdown');
+    const clueList = document.getElementById('clue-list');
+    const popup = document.getElementById('popup');
+    const popupClose = document.getElementById('popup-close');
+    const popupContent = document.getElementById('popup-content');
+    const reportIcon = document.getElementById('report-icon');
+    const hotspots = document.querySelectorAll('.hotspot');
+    let foundClues = [];
+
+    function showTooltip(text, x, y) {
+      tooltip.textContent = text;
+      tooltip.style.left = x + 'px';
+      tooltip.style.top = (y - 24) + 'px';
+      tooltip.style.visibility = 'visible';
+      setTimeout(() => tooltip.style.visibility = 'hidden', 800);
+    }
+
+    function addClue(word) {
+      if (!foundClues.includes(word)) {
+        foundClues.push(word);
+        const li = document.createElement('li');
+        li.textContent = word;
+        clueList.appendChild(li);
+        // +1 animation
+        const plus = document.createElement('div'); plus.className = 'plus-one'; plus.textContent = '+1';
+        const iR = cluesIcon.getBoundingClientRect();
+        const pR = gameContainer.getBoundingClientRect();
+        plus.style.left = (iR.left - pR.left + iR.width/2) + 'px';
+        plus.style.top  = (iR.top - pR.top - 10) + 'px';
+        plus.style.transform = 'translateX(-50%)';
+        gameContainer.appendChild(plus);
+        setTimeout(() => plus.remove(), 1000);
+      }
+    }
+
+    const popupData = {
+      'report card': { img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/report_card.png?v=1749196391524', text:'Alex got <span class="popup-word" data-word="bed mark">bed mark</span> yesterday.' },
+      'key card':    { img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/key_card.png?v=1749196382156', text:'Emma Brown, Bloom Street, building 34B, flat 43. <span class="popup-word" data-word="Emma Brown">Emma Brown</span>' },
+      'backpack':    { items:[{img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/toiletries.png?v=1749290801876',word:'toiletries'},{img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/blanket.png?v=1749290757215',word:'blanket'},{img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/pyjamas.png?v=1749290450290',word:'pyjamas'}] },
+      'phone':       { img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/sms.png?v=1749302609796', words:['anxious','suspicious','cover up'] },
+      'note':        { img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/note2.png?v=1749303288049', words:['let down'] },
+      'poster':      { img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/poster.png?v=1749303728460', words:['run away'] },
+      'laptop':      { img:'https://cdn.glitch.global/af119631-79e3-455e-96f1-c94005ab8794/web.png?v=1749308081054', words:['strict','argue','Max Waters'] },
+      'report':      { text:`Detective found a __________ with a ________ on the table.
+On the ______ he saw a message from friend saying she was waiting.
+Alex’s ________ was prepared, and muddy ___________ led to the window.
+A small _____ to his mother said he was sorry for disappointing her.
+His ______ was open to a chat from Max telling him to _________.
+A ____ from ______ ______ was nearby.
+Alex felt very _______ under his _______ mother and decided to escape at night.` }
+    };
+
+    hotspots.forEach(h => {
+      h.addEventListener('click', () => {
+        const name = h.dataset.name;
+        const r = h.getBoundingClientRect();
+        showTooltip(name, r.x + r.width/2, r.y);
+        // add hotspot itself
+        addClue(name);
+        if (popupData[name]) openPopup(name);
+      });
+    });
+
+    function openPopup(key) {
+      popupContent.innerHTML = '';
+      const data = popupData[key];
+      if (data.items) {
+        const row = document.createElement('div'); row.className = 'items-row';
+        data.items.forEach(it => {
+          const box = document.createElement('div');
+          const img = document.createElement('img'); img.src = it.img; box.appendChild(img);
+          const sp = document.createElement('span'); sp.className = 'popup-word'; sp.textContent = it.word; sp.dataset.word = it.word;
+          sp.addEventListener('click', () => addClue(it.word));
+          box.appendChild(sp);
+          row.appendChild(box);
+        });
+        popupContent.appendChild(row);
+      } else if (data.words) {
+        const img = document.createElement('img'); img.src = data.img; popupContent.appendChild(img);
+        const row = document.createElement('div'); row.className = 'words-row';
+        data.words.forEach(w => {
+          const sp = document.createElement('span'); sp.className = 'popup-word'; sp.textContent = w; sp.dataset.word = w;
+          sp.addEventListener('click', () => addClue(w));
+          row.appendChild(sp);
+        });
+        popupContent.appendChild(row);
+      } else if (key === 'report') {
+        const div = document.createElement('div'); div.className = 'report-text'; div.textContent = data.text;
+        popupContent.appendChild(div);
+      } else {
+        const img = document.createElement('img'); img.src = data.img; popupContent.appendChild(img);
+        const div = document.createElement('div'); div.innerHTML = data.text;
+        div.querySelectorAll('.popup-word').forEach(span => span.addEventListener('click', () => addClue(span.dataset.word)));
+        popupContent.appendChild(div);
+      }
+      popup.style.display = 'block';
+    }
+
+    popupClose.addEventListener('click', () => popup.style.display = 'none');
+    cluesIcon.addEventListener('click', e => { e.stopPropagation(); collectionDD.style.display = collectionDD.style.display === 'block' ? 'none' : 'block'; });
+    document.addEventListener('click', e => { if (!cluesIcon.contains(e.target) && !collectionDD.contains(e.target)) collectionDD.style.display = 'none'; });
+    reportIcon.addEventListener('click', () => openPopup('report'));
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
